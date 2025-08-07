@@ -17,73 +17,125 @@ html = """
 <!DOCTYPE html>
 <html>
     <head>
-        <title>TemperTemperature measurement</title>
+        <title>Fan & Temperature Monitor</title>
         <style>
-            .centerText {
-                text-align: center;
+            body { font-family: Arial, sans-serif; }
+            .data-block { margin: 20px 0; }
+            .label { font-weight: bold; }
+            .temp-bar-bg {
+                width: 200px;
+                height: 18px;
+                background: #eee;
+                border-radius: 8px;
+                display: inline-block;
+                vertical-align: middle;
+                margin-left: 10px;
+                margin-right: 10px;
+                border: 1px solid #bbb;
             }
-            .border {
-                margin: auto;
-                width: 300px;
-                height: 50px;
-                border: 1px solid #000000;
+            .temp-bar-fill {
+                display: block; /* vagy inline-block */
+                height: 100%;
+                background: linear-gradient(90deg, #00f 0%, #0f0 50%, #f00 100%);
+                border-radius: 8px;
+                transition: width 0.3s;
+}
+            .temp-bar-label {
+                min-width: 40px;
+                display: inline-block;
+                text-align: right;
             }
         </style>
     </head>
     <body>
-        <div class="centerText">
-            <h1>Temperature</h1>
+        <h1>Fan & Temperature Monitor</h1>
+        <div class="data-block">
+            <span class="label">Inbound Temperature:</span>
+            <span id="tempC_IN" class="temp-bar-label">--</span> &deg;C
+            <span class="temp-bar-bg">
+                <span id="tempC_IN_bar" class="temp-bar-fill" style="width:0%"></span>
+            </span>
         </div>
-        <div class="border">
-            <canvas id="myCanvas">
-                Your browser does not support the HTML5 canvas tag.
-            </canvas>
+        <div class="data-block">
+            <span class="label">Outbound Temperature:</span>
+            <span id="tempC_OUT" class="temp-bar-label">--</span> &deg;C
+            <span class="temp-bar-bg">
+                <span id="tempC_OUT_bar" class="temp-bar-fill" style="width:0%"></span>
+            </span>
         </div>
-        <div class="centerText">
-            <p id="intText"></p>
+        <div class="data-block">
+            <span class="label">Delta Temperature:</span>
+            <span id="delta_temp">--</span> &deg;C
         </div>
-            <script>
-                const canvas = document.getElementById('myCanvas');
-                const ctx = canvas.getContext('2d');
+        <div class="data-block">
+            <span class="label">Inbound Fan RPM:</span>
+            <span id="rpm_IN">--</span> <span style="font-size:90%;">1/min</span>
+        </div>
+        <div class="data-block">
+            <span class="label">Outbound Fan RPM:</span>
+            <span id="rpm_OUT">--</span> <span style="font-size:90%;">1/min</span>
+        </div>
+        <div class="data-block">
+            <span class="label">Required Inbound Fan Speed:</span>
+            <span id="inbound_fan_speed">--</span> %
+        </div>
+        <div class="data-block">
+            <span class="label">Required Outbound Fan Speed:</span>
+            <span id="outbound_fan_speed">--</span> %
+        </div>
 
-                let i;
-                let count = 0;
-                const CANV_WIDTH = 300;
-                const CANV_HEIGHT = 50;
-                
-                document.getElementById('intText').innerHTML = i;
-                setInterval(getVal, 1000);
+        <script>
+            function tempToPercent(temp) {
+                // -10°C = 0%, +80°C = 100%
+                let percent = (Number(temp) + 10) / 90 * 100;
+                if (percent < 0) percent = 0;
+                if (percent > 100) percent = 100;
+                return percent;
+            }
+            function tempToColor(temp) {
+                let t = Number(temp);
+                if (t <= 15) return "#00f"; // kék
+                if (t >= 60) return "#f00"; // piros
+                // zöld átmenet a kettő között
+                let percent = (t - 15) / (60 - 15);
+                // zöldből pirosba átmenet
+                let r = Math.round(0 + percent * (255 - 0));
+                let g = Math.round(255 - percent * 255);
+                let b = Math.round(255 - percent * 255);
+                return `rgb(${r},${g},${b})`;
+            }
 
-                async function getVal() {
-                    console.log('Fetching data...' + count);
-                    count++;
-                    let response = await fetch('/datas');
-                    let value = await response.json();
-                    i = value.inbound_temp; // Get inbound temperature from JSON response
-                    console.log(i);
-                    printValue();
+            async function updateData() {
+                try {
+                    const response = await fetch('/datas');
+                    const data = await response.json();
+                    // Hőmérséklet 1 tizedesjegyig
+                    let tempIN = Number(data.inbound_temp).toFixed(1);
+                    let tempOUT = Number(data.outbound_temp).toFixed(1);
+                    let delta_temp = Number(data.delta_temp).toFixed(1);
+                    let IN_fan_speed = Number(data.inbound_fan_speed).toFixed(0);
+                    let OUT_fan_speed = Number(data.outbound_fan_speed).toFixed(0);
+                    document.getElementById('tempC_IN').textContent = tempIN;
+                    document.getElementById('tempC_OUT').textContent = tempOUT;
+                    document.getElementById('delta_temp').textContent = delta_temp;
+                    document.getElementById('rpm_IN').textContent = data.inbound_rpm;
+                    document.getElementById('rpm_OUT').textContent = data.outbound_rpm;
+                    document.getElementById('inbound_fan_speed').textContent = IN_fan_speed;
+                    document.getElementById('outbound_fan_speed').textContent = OUT_fan_speed;
 
-                    i = mapValue(i, 0, 20000, 0, CANV_WIDTH);
-
-                    ctx.fillStyle = 'black';
-                    ctx.fillRect(0, 0, i, CANV_HEIGHT);
-
-                    ctx.fillStyle = 'white';
-                    ctx.fillRect(i + 1, 0, CANV_WIDTH, CANV_HEIGHT);
+                    // Progress bar frissítés
+                    document.getElementById('tempC_IN_bar').style.background = tempToColor(tempIN);
+                    document.getElementById('tempC_OUT_bar').style.background = tempToColor(tempOUT);
+                    document.getElementById('tempC_IN_bar').style.width = tempToPercent(tempIN) + "%";
+                    document.getElementById('tempC_OUT_bar').style.width = tempToPercent(tempOUT) + "%";
+                    console.log(tempIN, tempToPercent(tempIN));
+                } catch (e) {
+                    console.log("Hiba az adatok frissítésekor:", e);
                 }
-                
-                function printValue() {
-                    if(i > 20000) {
-                        i = 20000;
-                    }
-                    let iInt = parseInt(i);
-                    document.getElementById('intText').innerHTML = iInt + ' / 20000';
-                }
-
-                function mapValue(val, min, max, omin, omax) {
-                    return ((val - min) / (max - min) * (omax - omin));
-                }
-            </script>
+            }
+            setInterval(updateData, 1000);
+            updateData();
+        </script>
     </body>
 </html>
 """
@@ -101,12 +153,10 @@ SET_TEMPERATURE = 28.0 # Set temperature threshold in Celsius
 DELTA_TEMPERATURE = 5.0 # Delta temperature for fan speed adjustment
 RPM_IN_PIN = 1 # GPIO pin for inbound RPM sensor
 RPM_OUT_PIN = 3 # GPIO pin for outbound RPM sensor
-#DS_IN_ROM_ADDRESS = (0x28, 0x33, 0x5e, 0xba, 0x10, 0x00, 0x00, 0x5d) # ROM address for DS18B20 sensor inbound air
-#DS_OUT_ROM_ADDRESS = (0x28, 0x0c, 0xba, 0xde, 0x0d, 0x00, 0x00, 0x95) # ROM address for DS18B20 sensor outbound air
-#ROMS = (DS_IN_ROM_ADDRESS, DS_OUT_ROM_ADDRESS) # Tuple of ROM addresses for DS18B20 sensors
-#DS18B20_ROM_ADDRESS_FILE = "ds18b20_roms.json" # File to store DS18B20 ROM addresses
 DS_IN_SENSOR_PIN = 22 # GPIO pin for DS18B20 sensor inbound air
 DS_OUT_SENSOR_PIN = 2 # GPIO pin for DS18B20 sensor outbound air
+DS_IN_TEMP_ERROR = 0.1 # Error value for inbound air temperature
+DS_OUT_TEMP_ERROR = -0.3 # Error value for outbound air temperature
 
 # Network constants
 _IP_ADDRESS = "172.23.7.87" # Static IP address for the device
@@ -137,6 +187,7 @@ time.sleep(1) # Wait for network to stabilize
 
 tempC_IN = 0.0 # Initialize temperature variable for inbound air
 tempC_OUT = 0.0 # Initialize outbound air temperature variable
+tempC_delta = 0.0 # Initialize temperature difference variable
 
 ledToggle_time = time.ticks_ms() # Initialize LED toggle time
 ledToggle_time_tick = 1000 # Time interval for LED toggle in milliseconds
@@ -151,10 +202,8 @@ rpm_OUT = 0 # Initialize outbound RPM variable
 rpm_IN_pin = machine.Pin(RPM_IN_PIN, machine.Pin.IN, machine.Pin.PULL_UP) # Set pin for RPM sensor inbound air
 rpm_OUT_pin = machine.Pin(RPM_OUT_PIN, machine.Pin.IN, machine.Pin.PULL_UP) # Set pin for RPM sensor outbound air
 
-#control_time = time.ticks_ms() # Initialize control time
 control_time_tick = 1000 # Time interval for control in milliseconds
 
-#dsSensor_read_time = time.ticks_ms() # Initialize time for DS18B20 reading
 dsSensor_read_time_tick = 1000 # Time interval for DS18B20 reading in milliseconds
 ds_IN_pin = machine.Pin(DS_IN_SENSOR_PIN) # GPIO pin for DS18B20 incoming air
 ds_OUT_pin = machine.Pin(DS_OUT_SENSOR_PIN) # GPIO pin for DS18B20 outgoing air
@@ -244,7 +293,7 @@ def rpm_calculation():
     
 
 def DS18B20_reading():
-    global dsSensor_read_time, dsSensor_read_time_tick, tempC_IN, tempC_OUT, ds_sensors_convert_state, roms
+    global dsSensor_read_time, dsSensor_read_time_tick, tempC_IN, tempC_OUT, ds_sensors_convert_state, roms, tempC_delta
     # Read temperature from DS18B20 sensor
     if ds_sensors_convert_state:
         ds_IN_sensor.convert_temp() # Start temperature conversion for inbound air
@@ -252,8 +301,9 @@ def DS18B20_reading():
         ds_sensors_convert_state = False # Set conversion state to false
         return
     if roms:
-        tempC_IN = ds_IN_sensor.read_temp(roms[0]) # Read temperature from inbound air sensor
-        tempC_OUT = ds_OUT_sensor.read_temp(roms[1]) # Read temperature from outbound air sensor
+        tempC_IN = ds_IN_sensor.read_temp(roms[0]) + DS_IN_TEMP_ERROR # Read temperature from inbound air sensor
+        tempC_OUT = ds_OUT_sensor.read_temp(roms[1]) + DS_OUT_TEMP_ERROR # Read temperature from outbound air sensor
+        tempC_delta = tempC_OUT - tempC_IN # Calculate temperature difference
         print('Temperature inbound air: {:.1f}\'C '.format(tempC_IN)) # Print temperature inbound air
         print('Temperature outbound air: {:.1f}\'C '.format(tempC_OUT)) # Print temperature outbound air
     else:
@@ -266,10 +316,10 @@ def control_fan_speed():
     # Control fan speed based on temperature
     if tempC_OUT > tempC_IN:
         # Print tempC_IN and tempC_OUT for debugging
-        print("Inbound air temperature: {:.1f}°C".format(tempC_IN)) # Debug print
-        print("Outbound air temperature: {:.1f}°C".format(tempC_OUT)) # Debug print
+        print("Inbound air temperature: {:.1f}C".format(tempC_IN)) # Debug print
+        print("Outbound air temperature: {:.1f}C".format(tempC_OUT)) # Debug print
         # Print temperature difference
-        print("Temperature difference: {:.1f}°C".format(tempC_OUT - tempC_IN)) # Debug print
+        print("Temperature difference: {:.1f}C".format(tempC_OUT - tempC_IN)) # Debug print
 
         # Increase fan speed
         fan_IN_pwm_value_percent = map(tempC_OUT, tempC_IN, tempC_IN + DELTA_TEMPERATURE, 0, 100)
@@ -314,7 +364,7 @@ def initWebServer():
 
 
 def web_page(server):
-    global tempC_IN, tempC_OUT, rpm_IN, rpm_OUT, fan_IN_pwm_value_percent, fan_OUT_pwm_value_percent
+    global tempC_IN, tempC_OUT, rpm_IN, rpm_OUT, fan_IN_pwm_value_percent, fan_OUT_pwm_value_percent, tempC_delta
     # Handle web page requests
     cl, addr = server.accept() # Accept incoming connection
     print("Client connected from " + str(addr)) # Debug print
@@ -328,6 +378,7 @@ def web_page(server):
         # Send JSON response
         cl.send('{"inbound_temp" : ' + str(tempC_IN) + ', \
                 "outbound_temp" : ' + str(tempC_OUT) + ', \
+                "delta_temp" : ' + str(tempC_delta) + ', \
                 "inbound_rpm" : ' + str(rpm_IN) + ', \
                 "outbound_rpm" : ' + str(rpm_OUT) + ', \
                 "inbound_fan_speed" : ' + str(fan_IN_pwm_value_percent) + ', \
